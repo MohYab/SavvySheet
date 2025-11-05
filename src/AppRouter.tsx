@@ -12,15 +12,15 @@ function AppRouter() {
   const columns = useSheetColumns(sheets);
   const [currentSheetIdx, setCurrentSheetIdx] = useState<number>(0);
 
-  // Typad callback för HomePage
   const handleDataParsed = (parsedSheets: SheetData, fileName: string) => {
     setSheets(parsedSheets);
     setFilename(fileName);
     setCurrentSheetIdx(0);
   };
 
+  // Use Vite's BASE_URL. In dev it's '/', in production it's the `base` you set in vite.config.ts
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={import.meta.env.BASE_URL}>
       <main className="min-h-screen">
         <Routes>
           <Route path="/" element={<HomePage onDataParsed={handleDataParsed} />} />
