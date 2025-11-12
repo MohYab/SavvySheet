@@ -1,14 +1,19 @@
 import React from 'react';
 import { ArrowUturnLeftIcon, ArrowUturnRightIcon } from '@heroicons/react/24/outline';
 
-type Props = {
+type UndoRedoButtonsProps = {
   onUndo: () => void;
   onRedo: () => void;
   canUndo: boolean;
   canRedo: boolean;
 };
 
-export const UndoRedoButtons: React.FC<Props> = ({ onUndo, onRedo, canUndo, canRedo }) => {
+export const UndoRedoButtons: React.FC<UndoRedoButtonsProps> = ({
+  onUndo,
+  onRedo,
+  canUndo,
+  canRedo,
+}) => {
   return (
     <div className="flex items-center gap-2">
       <button
@@ -25,7 +30,7 @@ export const UndoRedoButtons: React.FC<Props> = ({ onUndo, onRedo, canUndo, canR
       <button
         onClick={onRedo}
         disabled={!canRedo}
-        className="undo-btn flex items-center gap-2 px-3 py-1.5 rounded-md"
+        className="redo-btn flex items-center gap-2 px-3 py-1.5 rounded-md"
         aria-label="Gör om"
         title="Gör om (Ctrl+Y)"
       >

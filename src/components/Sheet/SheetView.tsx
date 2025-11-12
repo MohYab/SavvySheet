@@ -1,11 +1,11 @@
-import { EditableTable } from '@components/Sheet';
+import EditableTable from './EditableTable';
 import type { ExcelRow, ExportColumn } from '@types';
 
 interface SheetViewProps {
   sheetName: string;
   data: ExcelRow[];
   onDataChange: (newData: ExcelRow[]) => void;
-  columns: ExportColumn<ExcelRow>[];
+  columns: ExportColumn<ExcelRow>[]; // (Behåll om export senare per-blad)
   originalFileName?: string;
 }
 

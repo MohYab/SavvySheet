@@ -55,30 +55,30 @@ function undoRedoReducer<T>(state: State<T>, action: Action<T>): State<T> {
 }
 
 /**
- * useUndoRedo - simple history hook for undo/redo operations.
- * initialPresent should be the initial value (e.g. initial rows array).
+ * Custom hook for managing undo/redo state history.
  */
 export function useUndoRedo<T>(initialPresent: T) {
-  const initialState: State<T> = { past: [], present: initialPresent, future: [] };
-
-  // We cast reducer to React.Reducer via unknown to avoid using `any` while keeping typing.
-  const [state, dispatch] = useReducer(
-    undoRedoReducer as unknown as React.Reducer<State<T>, Action<T>>,
-    initialState,
-  );
+  const [state, dispatch] = useReducer(undoRedoReducer, {
+    past: [],
+    present: initialPresent,
+    future: [],
+  });
 
   const set = useCallback((newPresent: T) => dispatch({ type: 'SET', payload: newPresent }), []);
   const undo = useCallback(() => dispatch({ type: 'UNDO' }), []);
   const redo = useCallback(() => dispatch({ type: 'REDO' }), []);
-  const reset = useCallback((value: T) => dispatch({ type: 'RESET', payload: value }), []);
+  const reset = useCallback(
+    (initialValue: T) => dispatch({ type: 'RESET', payload: initialValue }),
+    [],
+  );
 
   return {
     state: state.present,
     set,
     undo,
     redo,
-    reset,
     canUndo: state.past.length > 0,
     canRedo: state.future.length > 0,
+    reset,
   };
 }

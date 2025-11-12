@@ -1,8 +1,7 @@
 import { useEffect, useRef } from 'react';
 
 /**
- * Custom hook för att spara och ladda sheets-data till localStorage.
- * @template T - Typ av sheet-data, kan vara objekt eller array.
+ * Custom hook för att spara och ladda sheets-data till lokal lagring.
  */
 function useLocalSheet<T extends Record<string, unknown> | unknown[]>(
   sheetData: T,
@@ -15,32 +14,39 @@ function useLocalSheet<T extends Record<string, unknown> | unknown[]>(
   const hasLoaded = useRef(false);
 
   useEffect(() => {
-    const saved = localStorage.getItem(key);
-    if (saved) {
-      try {
-        const parsed: T = JSON.parse(saved);
-        setSheetData(parsed);
-      } catch (e) {
-        console.error('Failed to parse saved sheets', e);
-      }
+    if (typeof localStorage === 'undefined') {
+      console.error(
+        'localStorage is not supported in this environment. Skipping sheet data loading.',
+      );
+      return;
     }
 
-    if (setFilename) {
-      const savedFilename = localStorage.getItem(filenameKey);
-      if (savedFilename) setFilename(savedFilename);
+    try {
+      const saved = localStorage.getItem(key);
+      if (saved) {
+        const parsed: T = JSON.parse(saved);
+        setSheetData(parsed);
+      }
+
+      if (setFilename) {
+        const savedFilename = localStorage.getItem(filenameKey);
+        if (savedFilename) setFilename(savedFilename);
+      }
+    } catch (e) {
+      console.error('Failed to parse saved sheets', e);
     }
 
     hasLoaded.current = true;
   }, [key, filenameKey, setSheetData, setFilename]);
 
   useEffect(() => {
-    if (!hasLoaded.current) return;
+    if (!hasLoaded.current || typeof localStorage === 'undefined') return;
 
-    const isEmpty =
+    const isEmptyData =
       (Array.isArray(sheetData) && sheetData.length === 0) ||
       (!Array.isArray(sheetData) && Object.keys(sheetData).length === 0);
 
-    if (isEmpty) return;
+    if (isEmptyData) return;
 
     const save = () => {
       localStorage.setItem(key, JSON.stringify(sheetData));

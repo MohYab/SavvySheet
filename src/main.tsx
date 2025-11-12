@@ -1,11 +1,12 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import 'styles/index.css';
+import '@styles/index.css';
 import App from './App';
 
 const container = document.getElementById('root');
 if (!container) {
-  throw new Error('Root element not found. Make sure index.html has a <div id="root"></div>');
+  console.error('Root element "root" not found. The application cannot start.');
+  throw new Error('Root element "root" not found. Please check your HTML.');
 }
 
 createRoot(container).render(

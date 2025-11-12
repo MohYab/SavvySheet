@@ -1,129 +1,132 @@
-import React, { useRef, useCallback, useEffect, useMemo } from 'react';
+import React, { useRef, useCallback, useMemo, useState } from 'react';
 import { AgGridReact } from 'ag-grid-react';
-import type { ColDef, GridApi } from 'ag-grid-community';
 import { AllCommunityModule, ModuleRegistry, themeAlpine } from 'ag-grid-community';
-import { isEqual, getColumnDefs } from '@utils';
+import type { ColDef, GridApi, GetRowIdParams } from 'ag-grid-community';
 import type { EditableTableProps, ExcelRow } from '@types';
-import { useUndoRedo } from 'hooks/useUndoRedo';
-import UndoRedoButtons from './UndoRedoButtons';
+import { isEqual } from '@utils';
+import ExportButton from '@components/Export/ExportButton';
+import UndoRedoButtons from 'components/Sheet/UndoRedoButtons'; // Import UndRedo buttons
+import { useUndoRedo } from 'hooks/useUndoRedo'; // Import custom undo/redo hook
 
+// Register AG Grid modules
 ModuleRegistry.registerModules([AllCommunityModule]);
 
+const DEBOUNCE_MS = 250; // debounce delay in milliseconds
+
 const EditableTable: React.FC<EditableTableProps> = ({ data, dataOnChange }) => {
-  const gridApiRef = useRef<GridApi | null>(null);
+  const apiRef = useRef<GridApi | null>(null);
+  const [quickFilter, setQuickFilter] = useState('');
+  const [selected, setSelected] = useState(0);
 
-  // History hook for undo/redo. Initialize with incoming prop data.
-  const {
-    state: tableData,
-    set: setTableData,
-    undo,
-    redo,
-    reset,
-    canUndo,
-    canRedo,
-  } = useUndoRedo<ExcelRow[]>(data);
+  // Initialize Undo/Redo state using a custom hook
+  const { state, set, undo, redo, canUndo, canRedo } = useUndoRedo(data);
 
-  // Skip calling dataOnChange when resetting from external prop changes
-  const skipOnChangeRef = useRef<boolean>(true);
+  // Ensure stable row data with unique IDs (__rowId)
+  const rowDataForGrid: (ExcelRow & { __rowId: string })[] = useMemo(() => {
+    return state.map((row, idx) => ({ __rowId: `r_${idx}`, ...row }));
+  }, [state]);
 
-  // When parent 'data' prop changes (e.g. upload / external update), reset history and skip emitting change.
-  useEffect(() => {
-    reset(data);
-    skipOnChangeRef.current = true;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data]);
+  // Define AG Grid column definitions
+  const colDefs: ColDef[] = useMemo(() => {
+    if (!rowDataForGrid.length) return [];
+    return Object.keys(rowDataForGrid[0])
+      .filter((key) => key !== '__rowId')
+      .map((key) => ({
+        field: key,
+        headerName: key,
+        editable: true,
+        sortable: true,
+        filter: true,
+        resizable: true,
+      }));
+  }, [rowDataForGrid]);
 
-  // Whenever the internal tableData changes (user edit / undo / redo), propagate to parent,
-  // except when we intentionally skip after external resets.
-  useEffect(() => {
-    if (skipOnChangeRef.current) {
-      skipOnChangeRef.current = false;
-      return;
-    }
-    dataOnChange(tableData);
-  }, [tableData, dataOnChange]);
-
-  // compute column defs from current tableData so grid updates when columns change
-  const colDefs: ColDef[] = useMemo(() => getColumnDefs(tableData), [tableData]);
-
-  const saveData = useCallback(() => {
-    if (!gridApiRef.current) return;
-    gridApiRef.current.stopEditing();
-
-    const updatedData: ExcelRow[] = [];
-    gridApiRef.current.forEachNode((node) => {
-      const row: ExcelRow = {};
-      Object.entries(node.data as Record<string, unknown>).forEach(([key, value]) => {
-        if (
-          typeof value === 'string' ||
-          typeof value === 'number' ||
-          typeof value === 'boolean' ||
-          value === null
-        ) {
-          row[key] = value;
-        } else {
-          row[key] = String(value);
-        }
-      });
-      updatedData.push(row);
+  // Collects the data from the grid for saving
+  const collectData = useCallback((): ExcelRow[] => {
+    const api = apiRef.current;
+    if (!api) return state;
+    const rows: ExcelRow[] = [];
+    api.forEachNode((node) => {
+      if (!node.data) return;
+      const cleanRow = Object.fromEntries(
+        Object.entries(node.data).filter(([key]) => !key.startsWith('__')),
+      );
+      rows.push(cleanRow as ExcelRow);
     });
+    return rows;
+  }, [state]);
 
-    if (!isEqual(updatedData, tableData)) {
-      // Mark that this change originates locally (don't skip propagation)
-      skipOnChangeRef.current = false;
-      setTableData(updatedData); // push new snapshot to history
-      // dataOnChange will be called via the tableData effect
+  const doSave = useCallback(() => {
+    const updated = collectData();
+    if (!isEqual(updated, state)) {
+      set(updated); // Update Undo/Redo state
+      dataOnChange(updated); // Trigger parent callback
     }
-  }, [setTableData, tableData]);
+  }, [collectData, dataOnChange, set, state]);
 
-  // Keyboard shortcuts for Undo/Redo: Ctrl/Cmd+Z and Ctrl/Cmd+Y
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      const meta = e.ctrlKey || e.metaKey;
-      if (!meta) return;
-      if (e.key.toLowerCase() === 'z') {
-        e.preventDefault();
-        undo();
-      }
-      if (e.key.toLowerCase() === 'y') {
-        e.preventDefault();
-        redo();
-      }
+  // Debounced save function for minimal re-renders
+  const debouncedSave = useMemo(() => {
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    return () => {
+      if (timeout) clearTimeout(timeout);
+      timeout = setTimeout(doSave, DEBOUNCE_MS);
     };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [undo, redo]);
+  }, [doSave]);
 
   return (
-    <div className="w-full h-full">
-      {tableData.length === 0 ? (
-        <div className="flex items-center justify-center h-full rounded-md text-gray-600 italic border-2 border-gray-400">
-          Ingen fil uppladdad än!
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap gap-3 items-center justify-between">
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            placeholder="Snabbfilter..."
+            className="input input-sm input-bordered"
+            value={quickFilter}
+            onChange={(e) => setQuickFilter(e.target.value)}
+            aria-label="Snabbfilter"
+          />
+          <span className="text-xs opacity-70">
+            Valda: {selected} / {rowDataForGrid.length}
+          </span>
+        </div>
+        <ExportButton
+          data={rowDataForGrid.map(({ __rowId, ...rest }) => rest)}
+          filenameBase="sheet"
+          variant="both"
+        />
+      </div>
+
+      <UndoRedoButtons onUndo={undo} onRedo={redo} canUndo={canUndo} canRedo={canRedo} />
+
+      {rowDataForGrid.length === 0 ? (
+        <div className="border border-dashed p-8 text-center italic opacity-70">
+          Ingen data tillgänglig.
         </div>
       ) : (
-        <>
-          <div className="flex items-center justify-between mb-2">
-            <UndoRedoButtons onUndo={undo} onRedo={redo} canUndo={canUndo} canRedo={canRedo} />
-          </div>
-
-          <div
-            onMouseLeave={saveData}
-            className="w-full h-full"
-            style={{ height: 'calc(100vh - 250px)' }}
-          >
-            <div className="ag-theme-alpine w-full h-full">
-              <AgGridReact
-                rowData={tableData}
-                theme={themeAlpine}
-                columnDefs={colDefs}
-                onGridReady={(params) => {
-                  gridApiRef.current = params.api as GridApi;
-                }}
-                onCellValueChanged={saveData}
-              />
-            </div>
-          </div>
-        </>
+        <div className="ag-theme-alpine w-full" style={{ height: 'calc(100vh - 300px)' }}>
+          <AgGridReact
+            theme={themeAlpine}
+            rowData={rowDataForGrid}
+            columnDefs={colDefs}
+            rowSelection="multiple"
+            suppressRowClickSelection={false}
+            animateRows
+            quickFilterText={quickFilter}
+            onGridReady={(params) => {
+              apiRef.current = params.api;
+              params.api.sizeColumnsToFit();
+              setSelected(params.api.getSelectedNodes().length);
+            }}
+            onSelectionChanged={() => setSelected(apiRef.current?.getSelectedNodes().length ?? 0)}
+            onCellValueChanged={debouncedSave}
+            onCellEditingStopped={debouncedSave}
+            onPasteEnd={debouncedSave}
+            onSortChanged={debouncedSave}
+            getRowId={(params: GetRowIdParams) =>
+              String((params.data as { __rowId?: string }).__rowId ?? '')
+            }
+          />
+        </div>
       )}
     </div>
   );

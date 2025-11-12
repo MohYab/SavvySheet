@@ -1,69 +1,56 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { ChevronDownIcon, ArrowUpTrayIcon } from '@heroicons/react/24/outline';
-import type { SheetData, ExcelRow, ExportColumn } from '@types';
-import { getPdfFilename, generatePDF } from '@utils';
-import { ExportButton } from '@components/Export';
+import type { SheetData, ExcelRow } from '@types';
+import ExportButton from '@components/Export/ExportButton';
 
 interface DropDownProps {
   sheets: SheetData;
-  columns: ExportColumn<ExcelRow>[];
   filename?: string;
   onUploadNewFile: () => void;
 }
 
-export default function DropDown({ sheets, columns, filename, onUploadNewFile }: DropDownProps) {
+export default function DropDown({ sheets, filename, onUploadNewFile }: DropDownProps) {
   const [open, setOpen] = useState(false);
 
-  if (!sheets || Object.keys(sheets).length === 0) return null;
+  const flatData: (ExcelRow & { SheetName: string })[] = useMemo(() => {
+    return Object.entries(sheets).flatMap(([name, rows]) =>
+      rows.map((r) => ({ SheetName: name, ...r })),
+    );
+  }, [sheets]);
 
-  const sheetNames = Object.keys(sheets);
-  const data = sheetNames.flatMap((sheetName) =>
-    sheets[sheetName].map((row) => ({ SheetName: sheetName, ...row })),
-  );
-  const pdfFilename = getPdfFilename(filename);
+  if (!flatData.length) return null;
 
-  const handleDownload = () => {
-    const doc = generatePDF(data, columns);
-    doc.save(pdfFilename);
-    setOpen(false);
-  };
-
-  const handleShow = () => {
-    const doc = generatePDF(data, columns);
-    window.open(doc.output('bloburl'), '_blank');
-    setOpen(false);
-  };
-
-  const handleUploadNewFile = () => {
-    onUploadNewFile();
-    setOpen(false);
-  };
+  const filenameBase = filename?.replace(/\.[^.]+$/, '') || 'export';
 
   return (
     <div className="relative inline-block text-left">
       <button
         type="button"
-        onClick={() => setOpen((prev) => !prev)}
-        className="btn btn-inline btn-secondary inline-flex items-center rounded text-base transition"
+        onClick={() => setOpen((o) => !o)}
+        className="btn btn-secondary inline-flex items-center"
         aria-haspopup="true"
         aria-expanded={open}
       >
-        Meny
-        <ChevronDownIcon className="ml-2 w-5 h-5" />
+        Meny <ChevronDownIcon className="ml-1 w-5 h-5" />
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-56 rounded-md shadow-lg z-30 bg-base-100 border border-gray-300 py-2 flex flex-col gap-2 p-2">
+        <div
+          className="absolute right-0 mt-2 w-64 rounded-md shadow-lg z-30 bg-base-100 border border-base-200 p-3 space-y-3"
+          role="menu"
+        >
           <ExportButton
-            data={data}
-            columns={columns}
-            originalFileName={pdfFilename}
-            onDownload={handleDownload}
-            onShow={handleShow}
+            data={flatData}
+            filenameBase={filenameBase}
+            variant="both"
+            onAfterExport={() => setOpen(false)}
           />
           <button
-            onClick={handleUploadNewFile}
-            className="flex w-full  gap-2 px-4 py-2 hover:bg-gray-100 btn btn-outline"
+            onClick={() => {
+              onUploadNewFile();
+              setOpen(false);
+            }}
+            className="flex w-full gap-2 px-4 py-2 btn btn-outline"
           >
             <ArrowUpTrayIcon className="w-5 h-5" /> Ladda upp ny fil
           </button>
